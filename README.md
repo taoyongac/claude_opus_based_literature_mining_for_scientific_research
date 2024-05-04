@@ -34,3 +34,9 @@ Use academic language, maintain clear structure, and ensure logical organization
 copy text from step 1 into claude opus
 Prompt: You are an expert research assistant. First, find the quotes from the attached document that are most relevant to the following conclusions, and then print them in numbered order. Quotes should be relatively short. If there are no relevant quotes, write "No relevant quotes" instead. Then, incorporate quotes into the conclusions by making references to quotes relevant to each section of the conclusion solely by adding their bracketed numbers at the end of relevant sentences.
 "Place the conclusions obtained in Step Two here."
+
+
+More notes:
+1. Literature mining with claude opus is far more better than with gpt4. 
+2. Consider running multiple iterations of this pipeline rather than just one if your inquiry is particularly significant. For instance, in section 2, present a broader range of questions individually: Does the material mention any new hypotheses or mechanisms? What unresolved questions and future research directions are highlighted? What implications do the material's conclusions hold for research in the field, and what limitations might exist?
+3. Delve deeply into the details derived from steps 2 and 3, and pose new inquiries focused on specific topics using the input file from step 1 once more.
