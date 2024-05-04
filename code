@@ -1,0 +1,287 @@
+from flask import Flask, request, render_template_string, send_from_directory
+import requests
+import json
+import os
+import re
+from threading import Thread
+import asyncio
+from playwright.async_api import async_playwright
+import logging
+from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
+from requests import head, get
+import fitz  # PyMuPDF
+import asyncio
+import logging
+import nltk
+from langchain_community.llms import Ollama
+from langchain.text_splitter import TokenTextSplitter
+from pydantic import BaseModel
+from typing import List, Tuple
+from flask import Response
+from concurrent.futures import ThreadPoolExecutor 
+from flask import stream_with_context, Response
+import nltk
+from nltk.tokenize import word_tokenize
+
+
+app = Flask(__name__)
+
+nltk.download('punkt')
+
+def count_tokens(text):
+    """Count the number of tokens in the given text."""
+    tokens = word_tokenize(text)
+    return len(tokens)
+
+# Ensure required directories exist
+os.makedirs('downloads', exist_ok=True)
+os.makedirs('logs', exist_ok=True)
+
+# Configure logging
+logging.basicConfig(filename='logs/scraping_log.txt', level=logging.INFO,
+                    format='%(asctime)s: %(levelname)s: %(message)s')
+
+# HTML Template for the frontend
+TEMPLATE = '''
+<!doctype html>
+<html>
+<head>
+    <title>Search and Scrape</title>
+</head>
+<body>
+    <h1>Google Custom Search and Content Scraping</h1>
+    <form action="/" method="post">
+        <input type="text" name="query" placeholder="Enter search query" style="width: 600px;" required />
+        <button type="submit">search_and_scrape</button>
+    </form>
+    <br>
+    <div id="message"></div>
+</body>
+</html>
+'''
+
+def google_search(query, api_key, cse_id, num_results=10):
+    all_results = []
+    start = 1
+    while len(all_results) < num_results:
+        url = "https://www.googleapis.com/customsearch/v1"
+        params = {
+            "key": api_key,
+            "cx": cse_id,
+            "q": query,
+            "num": min(num_results - len(all_results), 10),
+            "start": start
+        }
+        try:
+            response = requests.get(url, params=params)
+            response.raise_for_status() 
+            search_results = response.json()
+            items = search_results.get("items", [])
+            if not items:
+                logging.info("No more results returned by Google Custom Search.")
+                break
+            all_results.extend(items)
+            start += len(items)
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Failed to fetch search results: {str(e)}")
+            break
+    return all_results[:num_results]
+
+def save_results(results):
+    files = []
+    search_results_data = [] 
+    for i, result in enumerate(results):
+        filename = f"google_search_result_{i+1}.json"
+        with open(os.path.join('downloads', filename), "w", encoding="utf-8") as file:
+            json.dump(result, file, indent=4)
+        files.append(filename)
+        search_results_data.append(result) 
+    with open('downloads/search_results.json', 'w', encoding='utf-8') as f:
+        json.dump(search_results_data, f, indent=4)
+    return files
+
+async def robust_goto(page, url, max_attempts=3):
+    attempt = 0
+    while attempt < max_attempts:
+        try:
+            # Attempt to go to the page with a timeout of 60 seconds
+            await page.goto(url, wait_until="networkidle", timeout=60000)
+            return True  # Navigation successful
+        except Exception as e:
+            logging.error(f"Attempt {attempt + 1} failed for {url}: {str(e)}")
+            attempt += 1
+            await asyncio.sleep(10)  # Wait for 10 seconds before retrying
+    return False  # Navigation failed after retries
+
+def document_to_single_line_split_by_multiple_keywords(content, split_keywords=["references", "bibliography"]):
+    # Convert the entire content into a single line by removing newlines
+    single_line = content.replace('\n', ' ')
+    
+    # Construct a regex pattern that matches any of the specified keywords, case-insensitively
+    regex_pattern = '|'.join([re.escape(keyword) for keyword in split_keywords])
+    split_pattern = re.compile(regex_pattern, re.IGNORECASE)
+    
+    # Use regular expression to split the content case-insensitively
+    split_lines = split_pattern.split(single_line)
+
+    # First, find all occurrences of the keywords case-insensitively
+    keywords = split_pattern.findall(single_line)
+    
+    # Combine them back with the split text
+    formatted_lines = [split_lines[0]]
+    for keyword, line in zip(keywords, split_lines[1:]):
+        formatted_lines.append(keyword + line)
+
+    # Filter lines containing " j." more than 50 times, case-insensitively
+    count_pattern = re.compile(r"\bj\.", re.IGNORECASE)
+    filtered_lines = []
+    for line in formatted_lines:
+        if len(count_pattern.findall(line)) <= 50:
+            filtered_lines.append(line)
+
+    # Rejoin the lines with a newline character to create a formatted output
+    formatted_output = '\n'.join(filtered_lines)
+    return formatted_output
+
+async def extract_and_save_text(url, browser, index):
+    logging.info(f"Starting extraction for {url}")
+    page = None
+    context = None
+    try:
+        # Generate a random user agent
+        user_agent = UserAgent().random
+
+        # Create a new context with the random user agent
+        context = await browser.new_context(user_agent=user_agent)
+        page = await context.new_page()
+        
+        try:
+            # Head request to determine content type
+            head_response = requests.head(url)
+            content_type = head_response.headers.get('Content-Type', '').lower()
+        except KeyError:
+            logging.warning(f"Content-Type header not found for {url}. Assuming HTML.")
+            content_type = 'html'
+        
+        if 'html' in content_type:
+            if await robust_goto(page, url):
+                try:
+                    content = await page.content()
+                    soup = BeautifulSoup(content, 'html.parser')
+                    body_text = soup.find('body')
+                    if body_text:
+                        readable_text = body_text.get_text(separator='\n', strip=True)
+                        processed_text = document_to_single_line_split_by_multiple_keywords(readable_text)  # Process text
+                        if processed_text:
+                            filename = f"downloads/scraped_text_{index}.txt"
+                            with open(filename, 'w', encoding='utf-8') as file:
+                                file.write(processed_text)
+                            logging.info(f"Saved readable text from {url} to {filename}")
+                        else:
+                            logging.info(f"No suitable text to save after processing for {url}")
+                except Exception as e:
+                    logging.error(f"Error scraping {url}: {str(e)}")
+            else:
+                logging.error(f"Failed to navigate to {url} after multiple attempts")
+        elif 'pdf' in content_type:
+            try:
+                response = requests.get(url)
+                pdf_path = f"downloads/temp_{index}.pdf"
+                with open(pdf_path, 'wb') as f:
+                    f.write(response.content)
+                doc = fitz.open(pdf_path)
+                text = ''
+                for page in doc:
+                    text += page.get_text()
+                processed_text = document_to_single_line_split_by_multiple_keywords(text)  # Process text
+                if processed_text:
+                    filename = f"downloads/scraped_text_{index}.txt"
+                    with open(filename, 'w', encoding='utf-8') as file:
+                        file.write(processed_text)
+                    logging.info(f"Saved readable text from PDF {url} to {filename}")
+                else:
+                    logging.info(f"No suitable text to save after processing for {url}")
+            except Exception as e:
+                logging.error(f"Error extracting text from PDF {url}: {str(e)}")
+        else:
+            logging.warning(f"Unsupported content type {content_type} at {url}")
+    except Exception as e:
+        logging.error(f"Error creating context or navigating to {url}: {str(e)}")
+
+async def run_playwright_task(links):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        tasks = []
+        for index, link in enumerate(links):
+            task = asyncio.ensure_future(extract_and_save_text(link, browser, index))
+            tasks.append(task)
+        await asyncio.gather(*tasks)
+        await browser.close()
+
+def merge_and_split_documents(directory, max_tokens=156000):
+    """Merge 'scraped_text_0.txt' to 'scraped_text_9.txt' files in the given directory and split them into smaller documents based on token count."""
+    merged_text = ""
+    for i in range(10):
+        filename = f"scraped_text_{i}.txt"
+        file_path = os.path.join(directory, filename)
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as file:
+                merged_text += file.read() + "\n"
+
+    document_count = 1
+    current_text = ""
+    for line in merged_text.split("\n"):
+        current_text += line + "\n"
+        if count_tokens(current_text) >= max_tokens:
+            output_path = os.path.join(directory, f"merged_document_{document_count}.txt")
+            with open(output_path, 'w', encoding='utf-8') as file:
+                file.write(current_text)
+            current_text = ""
+            document_count += 1
+
+    if current_text:
+        output_path = os.path.join(directory, f"merged_document_{document_count}.txt")
+        with open(output_path, 'w', encoding='utf-8') as file:
+            file.write(current_text)
+
+    print(f"Merged and split documents into {document_count} files.")
+
+
+@app.route('/', methods=['GET', 'POST'])
+def search_and_scrape():
+    if request.method == 'POST':
+        query = request.form.get('query')
+        if not query:
+            return "Please provide the 'query' field in the form.", 400
+        if query:
+            api_key = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Replace with your actual API key
+            cse_id = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"  # Replace with your actual Custom Search Engine ID
+            
+            try:
+                search_results = google_search(query, api_key, cse_id)
+                save_results(search_results)
+                links = [result['link'] for result in search_results]
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(run_playwright_task(links))
+                merge_and_split_documents('downloads')
+                merged_files = [f for f in os.listdir('downloads') if f.startswith('merged_document_')]
+                merged_content_html = []
+                for file in merged_files:
+                    with open(os.path.join('downloads', file), 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        merged_content_html.append(f"<h3>{file}</h3><pre>{content}</pre>")
+                return f"""
+                <h2>Merged Content:</h2>
+                {'<br>'.join(merged_content_html)}
+                """
+            except Exception as e:
+                logging.error(f"Error during search and scrape: {str(e)}")
+                return "An error occurred during the process. Please check the logs.", 500
+        else:
+            return "Please provide the 'query' field in the form.", 400
+
+    return render_template_string(TEMPLATE)
+if __name__ == "__main__":
+    app.run(debug=True)
