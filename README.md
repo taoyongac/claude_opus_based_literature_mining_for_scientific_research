@@ -1,5 +1,16 @@
-# crawl_for_claude_opus
-step one:
+# claude_opus_based_literature_mining_for_scientific_research
+
+Introduction:
+This document outlines a process for conducting scientific research using Claude Opus, a large language model developed by Anthropic. The process involves mining relevant literature through Google searches, processing the collected material with Claude Opus, and synthesizing the information to answer research questions and draw conclusions.
+The described workflow consists of three main steps:
+
+Collecting research material by fetching Google search results using a Flask service. The service requires a Google API key and CSE ID, and the collected results are saved as text files for further processing.
+Inputting the collected research material into Claude Opus and prompting the model to thoroughly review the content and provide a well-structured, academically rigorous summary that addresses the research question at hand.
+Utilizing Claude Opus's capabilities as an expert research assistant to identify relevant quotes from the research material that support the conclusions drawn in step two. The model then incorporates these quotes into the conclusions by referencing them using bracketed numbers.
+
+This process leverages the power of large language models to efficiently gather, analyze, and synthesize information from a wide range of sources, enabling researchers to draw well-supported conclusions and advance their scientific understanding of the topic under investigation.
+
+##########step one:
 Collecting material for Claude Opus by fetching 10 pages of Google search results
 
 1. This is a Flask service. To use it, you need to insert your Google API key and CSE ID into the code. Save the file code as app.py；
@@ -13,13 +24,13 @@ When installing Flask, you might encounter an error prompting you to install the
 
 
 
-Step Two:
+##########Step Two:
 copy text from step 1 into claude opus
 Prompt: Based on the research materials provided above, answer the following question:Your question
 Make every effort to thoroughly review the entire body of research material and ensure that no points from the articles are overlooked. Please organize your summary in an academically rigorous, logically coherent manner.
 Use academic language, maintain clear structure, and ensure logical organization of your summary. Utilize original text from the materials whenever possible, and employ professional terminology in English.
 
-Step Three:
+##########Step Three:
 copy text from step 1 into claude opus
 Prompt: You are an expert research assistant. First, find the quotes from the attached document that are most relevant to the following conclusions, and then print them in numbered order. Quotes should be relatively short. If there are no relevant quotes, write "No relevant quotes" instead. Then, incorporate quotes into the conclusions by making references to quotes relevant to each section of the conclusion solely by adding their bracketed numbers at the end of relevant sentences.
 "Place the conclusions obtained in Step Two here."
