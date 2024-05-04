@@ -1,7 +1,7 @@
 # crawl_for_claude_opus
 Collecting material for Claude Opus by fetching 10 pages of Google search results
 
-1. This is a Flask service. To use it, you need to insert your Google API key and CSE ID into the code. Save the file as app.py；
+1. This is a Flask service. To use it, you need to insert your Google API key and CSE ID into the code. Save the file code as app.py；
 2. then run python app.py in Visual Studio Code. Open your browser and navigate to 127.0.0.1:5000. 
 3. Enter your search keyword, and you'll get the search results. Copy these results into Claude Opus for further use.
 
