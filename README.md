@@ -26,7 +26,7 @@ When installing Flask, you might encounter an error prompting you to install the
 
 ##########Step Two:
 copy text from step 1 into claude opus
-Prompt: Based on the research materials provided above, answer the following question:Your question
+Prompt: Based on the research materials provided above, answer the following question:"Your question".
 Make every effort to thoroughly review the entire body of research material and ensure that no points from the articles are overlooked. Please organize your summary in an academically rigorous, logically coherent manner.
 Use academic language, maintain clear structure, and ensure logical organization of your summary. Utilize original text from the materials whenever possible, and employ professional terminology in English.
 
